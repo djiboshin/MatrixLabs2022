@@ -1,5 +1,5 @@
 from abc import ABC
-
+import numbers
 import numpy as np
 from fractions import Fraction
 
@@ -66,6 +66,21 @@ class Matrix:
     def empty_like(self, width=None, height=None):
         raise NotImplementedError
 
+    def eye_element(self, element):
+        if isinstance(element, Matrix):
+            return element.eye_like()
+        elif isinstance(element, np.number) or isinstance(element, numbers.Number):
+            return 1
+        elif isinstance(element, Fraction):
+            return Fraction(1, 1)
+        raise NotImplemented
+
+    def eye_like(self, width=None, height=None):
+        matix = self.empty_like()
+        for i in range(min([matix.height, matix.width])):
+            matix[i, i] = self.eye_element(matix[i, i])
+        return matix
+
     def __getitem__(self, key):
         raise NotImplementedError
 
@@ -80,6 +95,12 @@ class Matrix:
                 for c in range(self.width):
                     matrix[r, c] = self[r, c] + other[r, c]
             return matrix
+        elif isinstance(other, np.number) or isinstance(other, numbers.Number) or isinstance(other, int):
+            matrix = self.empty_like()
+            for r in range(self.height):
+                for c in range(self.width):
+                    matrix[r, c] = self[r, c] + other
+            return matrix
         return NotImplemented
 
     def __sub__(self, other):
@@ -90,15 +111,34 @@ class Matrix:
                 for c in range(self.width):
                     matrix[r, c] = self[r, c] - other[r, c]
             return matrix
+        elif isinstance(other, np.number) or isinstance(other, numbers.Number):
+            matrix = self.empty_like()
+            for r in range(self.height):
+                for c in range(self.width):
+                    matrix[r, c] = self[r, c] - other
+            return matrix
         return NotImplemented
 
+    #     def __rsub__(self, other):
+    #         return self.__sub__(other)
+
+    def __neg__(self):
+        matrix = self.empty_like()
+        for r in range(self.height):
+            for c in range(self.width):
+                matrix[r, c] = - self[r, c]
+        return matrix
+
     def __mul__(self, other):
+        return self.__matmul__(other)
+
+    def __rmul__(self, other):
         return self.__matmul__(other)
 
     def __matmul__(self, other):
         if isinstance(other, Matrix):
             assert self.width == other.height, f"Shapes does not match: {self.shape} != {other.shape}"
-            matrix = np.empty((self.height, other.width))
+            matrix = self.empty_like(width=self.height, height=other.width)
             for r in range(self.height):
                 for c in range(other.width):
                     acc = None
@@ -107,13 +147,22 @@ class Matrix:
                         acc = add if acc is None else acc + add
                     matrix[r, c] = acc
             return matrix
+        elif isinstance(other, np.number) or isinstance(other, numbers.Number):
+            matrix = self.empty_like()
+            for r in range(self.height):
+                for c in range(self.width):
+                    matrix[r, c] = self[r, c] * other
+            return matrix
         return NotImplemented
+
+    def __truediv__(self, other):
+        return self * self.invert_element(other)
 
     def inverse(self):
         raise NotImplementedError
 
     def invert_element(self, element):
-        if isinstance(element, float):
+        if isinstance(element, numbers.Number) or isinstance(element, np.number):
             return 1 / element
         if isinstance(element, Fraction):
             return 1 / element
@@ -123,10 +172,11 @@ class Matrix:
 
     def lu(self):
         assert self.width == self.height, f"Shapes does not match: {self.shape}"
-        L = np.zeros((self.height, self.height))
+        L = np.zeros((self.height, self.height), dtype=self.dtype)
         for r in range(self.height):
             L[r, r] = 1
-        U = np.zeros((self.height, self.height))
+        #         L = self.eye_like()
+        U = np.zeros((self.height, self.height), dtype=self.dtype)
 
         for r in range(self.height):
             for c in range(self.height):
@@ -134,14 +184,15 @@ class Matrix:
                     acc = None
                     for k in range(r):
                         add = L[r, k] * U[k, c]
-                        acc = add if acc is None else acc + add
-                    U[r, c] = self[r, c] - acc
+                        acc = add if acc is None else (acc + add)
+                    U[r, c] = self[r, c] if acc is None else (self[r, c] - acc)
                 else:
                     acc = None
                     for k in range(c):
                         add = L[r, k] * U[k, c]
-                        acc = add if acc is None else acc + add
-                    L[r, c] = (self[r, c] - acc) * self.invert_element(U[c, c])
+                        acc = add if acc is None else (acc + add)
+                    L[r, c] = self[r, c] if acc is None else (self[r, c] - acc)
+                    L[r, c] = L[r, c] * self.invert_element(U[c, c])
         return L, U
 
     def det(self):
@@ -150,6 +201,45 @@ class Matrix:
         for k in range(self.height):
             acc = U[k, k] if acc is None else acc * U[k, k]
         return acc
+
+        def _LY_E_sol(self, L):
+            ''' Solves LY=E'''
+
+        Y = L.empty_like()
+        for i in range(L.height):
+            for j in range(L.width):
+                Y[j, i] = 0 if i != j else 1
+                for k in range(j):
+                    Y[j, i] = Y[j, i] - L[j, k] * Y[k, i]
+        return Y
+
+    def _Ly_b_sol(self, L, b):
+        ''' Solves Ly=b'''
+        y = np.empty(L.height, dtype=self.dtype)
+        for i in range(L.height):
+            y[i] = b[i]
+            for k in range(i):
+                y[i] = y[i] - L[i, k] * y[k]
+        return y
+
+    def _Ux_y_sol(self, U, y):
+        x = np.empty(U.height, dtype=self.dtype)
+        for j in range(U.width - 1, -1, -1):
+            x[j] = y[j]
+            for k in range(j + 1, U.width):
+                x[j] = x[j] - U[j, k] * x[k]
+            x[j] = x[j] * self.invert_element(U[j, j])
+        return x
+
+    def _UX_Y_sol(self, U, Y):
+        ''' Solves UX=Y'''
+        X = Y.empty_like()
+        for i in range(U.height):
+            X[:, i] = self._Ux_y_sol(U, Y[:, i])
+        return X
+
+    def solve(self):
+        pass
 
 
 class FullMatrix(Matrix, ABC):
@@ -197,3 +287,15 @@ class FullMatrix(Matrix, ABC):
     def __setitem__(self, key, value):
         row, column = key
         self.data[row, column] = value
+
+    def lu(self):
+        L, U = super().lu()
+        return FullMatrix(L), FullMatrix(U)
+
+    def inverse(self):
+        '''LUX=E'''
+        L, U = self.lu()
+        Y = self._LY_E_sol(L)
+        X = self._UX_Y_sol(U, Y)
+        return (X)
+
