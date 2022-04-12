@@ -298,6 +298,7 @@ class Matrix(ABC):
             if n is None:
                 new_n = None
             else:
+                new_n = n - 1
             if isinstance(U[k, k], Matrix) and new_n != 0:
                 acc = U[k, k].det(new_n) if acc is None else acc * U[k, k].det(new_n)
             else:
