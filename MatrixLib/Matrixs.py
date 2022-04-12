@@ -1,7 +1,53 @@
-from abc import ABC
+from abc import ABC, abstractproperty, abstractmethod
 import numbers
 import numpy as np
 from fractions import Fraction
+from typing import Union, Tuple, TypeVar, Generic, Dict, Iterable
+
+
+def invert_element(element):
+    if isinstance(element, numbers.Number) or isinstance(element, np.number):
+        return 1 / element
+    if isinstance(element, Fraction):
+        return 1 / element
+    if isinstance(element, Matrix):
+        return element.inverse()
+    raise TypeError
+
+
+def norm_element(element, norm):
+    if isinstance(element, Matrix):
+        return element.norm(norm)
+    # elif isinstance(element, np.number) or isinstance(element, numbers.Number):
+    else:
+        return abs(element)
+
+
+def eye_element(element):
+    if isinstance(element, Matrix):
+        return element.eye_like()
+    elif isinstance(element, np.number) or isinstance(element, numbers.Number):
+        return 1
+    elif isinstance(element, Fraction):
+        return Fraction(1, 1)
+    raise TypeError(f'Can`t find eye element for type {type(element)}')
+
+
+def zero_element(element):
+    if isinstance(element, Matrix):
+        return element.zero_like()
+    elif isinstance(element, np.number) or isinstance(element, numbers.Number):
+        return 0
+    elif isinstance(element, Fraction):
+        return Fraction(0, 1)
+    raise TypeError(f'Can`t find zero element for type {type(element)}')
+
+
+def transpose_element(element):
+    if isinstance(element, Matrix):
+        return element.T
+    else:
+        return element
 
 
 class TextBlock:
@@ -26,14 +72,16 @@ class TextBlock:
         return [" ".join(row) for row in zip(*blocks)]
 
 
-class Matrix:
+class Matrix(ABC):
     """Общий предок для всех матриц."""
 
     @property
+    @abstractmethod
     def shape(self):
         raise NotImplementedError
 
     @property
+    @abstractmethod
     def dtype(self):
         raise NotImplementedError
 
@@ -63,29 +111,14 @@ class Matrix:
                 result.append(f'| {" " * (width_total + self.width)}|')
         return "\n".join(result)
 
-    def empty_like(self, width=None, height=None):
-        raise NotImplementedError
-
-    def eye_element(self, element):
-        if isinstance(element, Matrix):
-            return element.eye_like()
-        elif isinstance(element, np.number) or isinstance(element, numbers.Number):
-            return 1
-        elif isinstance(element, Fraction):
-            return Fraction(1, 1)
-        raise NotImplemented
-
-    def eye_like(self, width=None, height=None):
-        matix = self.empty_like()
-        for i in range(min([matix.height, matix.width])):
-            matix[i, i] = self.eye_element(matix[i, i])
-        return matix
-
-    def __getitem__(self, key):
-        raise NotImplementedError
-
-    def __setitem__(self, key, value):
-        raise NotImplementedError
+    def __eq__(self, other):
+        if type(self) != type(other) and not isinstance(other, Matrix):
+            return False
+        for i in range(self.height):
+            for k in range(self.width):
+                if self[i, k] != other[i, k]:
+                    return False
+        return True
 
     def __add__(self, other):
         if isinstance(other, Matrix):
@@ -96,11 +129,12 @@ class Matrix:
                     matrix[r, c] = self[r, c] + other[r, c]
             return matrix
         elif isinstance(other, np.number) or isinstance(other, numbers.Number) or isinstance(other, int):
-            matrix = self.empty_like()
-            for r in range(self.height):
-                for c in range(self.width):
-                    matrix[r, c] = self[r, c] + other
-            return matrix
+            # matrix = self.empty_like()
+            # for r in range(self.height):
+            #     for c in range(self.width):
+            #         matrix[r, c] = self[r, c] + other
+            # return matrix
+            return self + self.eye_like() * other
         return NotImplemented
 
     def __sub__(self, other):
@@ -112,15 +146,16 @@ class Matrix:
                     matrix[r, c] = self[r, c] - other[r, c]
             return matrix
         elif isinstance(other, np.number) or isinstance(other, numbers.Number):
-            matrix = self.empty_like()
-            for r in range(self.height):
-                for c in range(self.width):
-                    matrix[r, c] = self[r, c] - other
-            return matrix
+            # matrix = self.empty_like()
+            # for r in range(self.height):
+            #     for c in range(self.width):
+            #         matrix[r, c] = self[r, c] - other
+            # return matrix
+            return self - self.eye_like() * other
         return NotImplemented
 
-    #     def __rsub__(self, other):
-    #         return self.__sub__(other)
+    def __rsub__(self, other):
+        return (-self) + other
 
     def __neg__(self):
         matrix = self.empty_like()
@@ -133,18 +168,21 @@ class Matrix:
         return self.__matmul__(other)
 
     def __rmul__(self, other):
-        return self.__matmul__(other)
+        if not isinstance(other, Matrix):
+            return self.__matmul__(other)
+        raise ValueError
 
     def __matmul__(self, other):
         if isinstance(other, Matrix):
             assert self.width == other.height, f"Shapes does not match: {self.shape} != {other.shape}"
-            matrix = self.empty_like(width=self.height, height=other.width)
+            matrix = self.empty_like(height=self.height, width=other.width)
             for r in range(self.height):
                 for c in range(other.width):
                     acc = None
                     for k in range(self.width):
                         add = self[r, k] * other[k, c]
                         acc = add if acc is None else acc + add
+                        # print(type(acc))
                     matrix[r, c] = acc
             return matrix
         elif isinstance(other, np.number) or isinstance(other, numbers.Number):
@@ -156,28 +194,54 @@ class Matrix:
         return NotImplemented
 
     def __truediv__(self, other):
-        return self * self.invert_element(other)
+        return self * invert_element(other)
 
-    def inverse(self):
+    def __abs__(self):
+        matrix = self.empty_like()
+        for i in range(matrix.height):
+            for j in range(matrix.width):
+                matrix[i, j] = abs(self[i, j])
+        return matrix
+
+    def norm(self, norm='F'):
+        if norm == 'F':
+            res = 0
+            for i in range(self.height):
+                for j in range(self.width):
+                    res += (norm_element(self[i, j], norm)) ** 2
+            if isinstance(res, Fraction):
+                return np.sqrt(res.numerator / res.denominator)
+            return np.sqrt(res)
         raise NotImplementedError
 
-    def invert_element(self, element):
-        if isinstance(element, numbers.Number) or isinstance(element, np.number):
-            return 1 / element
-        if isinstance(element, Fraction):
-            return 1 / element
-        if isinstance(element, Matrix):
-            return element.inverse()
-        raise TypeError
+    @abstractmethod
+    def __getitem__(self, key):
+        pass
+
+    @abstractmethod
+    def __setitem__(self, key, value):
+        pass
+
+    @abstractmethod
+    def empty_like(self, width=None, height=None):
+        pass
+
+    @abstractmethod
+    def eye_like(self: 'Matrix') -> 'Matrix':
+        pass
+
+    @abstractmethod
+    def zero_like(self: 'Matrix') -> 'Matrix':
+        pass
+
+    @abstractmethod
+    def inverse(self: 'Matrix') -> 'Matrix':
+        pass
 
     def lu(self):
         assert self.width == self.height, f"Shapes does not match: {self.shape}"
-        L = np.zeros((self.height, self.height), dtype=self.dtype)
-        for r in range(self.height):
-            L[r, r] = 1
-        #         L = self.eye_like()
-        U = np.zeros((self.height, self.height), dtype=self.dtype)
-
+        L = self.eye_like()
+        U = self.zero_like()
         for r in range(self.height):
             for c in range(self.height):
                 if r <= c:
@@ -192,54 +256,92 @@ class Matrix:
                         add = L[r, k] * U[k, c]
                         acc = add if acc is None else (acc + add)
                     L[r, c] = self[r, c] if acc is None else (self[r, c] - acc)
-                    L[r, c] = L[r, c] * self.invert_element(U[c, c])
+                    L[r, c] = L[r, c] * invert_element(U[c, c])
         return L, U
 
-    def det(self):
+    def lup(self):
+        assert self.width == self.height, f"Shapes does not match: {self.shape}"
+        L = self.eye_like()
+        P = self.eye_like()
+        Pr = list(range(self.height))
+        U = self.zero_like()
+        for r in range(self.height):
+            max_r = r + np.argmax([norm_element(self[Pr[i], r], 'F') for i in range(r, self.height)])
+            new_r = Pr[max_r]
+            Pr[max_r], Pr[r] = Pr[r], Pr[max_r]
+            for c in range(self.width):
+                if r <= c:
+                    acc = None
+                    for k in range(r):
+                        add = L[r, k] * U[k, c]
+                        acc = add if acc is None else (acc + add)
+                    U[r, c] = self[new_r, c] if acc is None else (self[new_r, c] - acc)
+                else:
+                    acc = None
+                    for k in range(c):
+                        add = L[r, k] * U[k, c]
+                        acc = add if acc is None else (acc + add)
+                    L[r, c] = self[new_r, c] if acc is None else (self[new_r, c] - acc)
+                    L[r, c] = L[r, c] * invert_element(U[c, c])
+        for p in range(self.width):
+            if Pr[p] != p:
+                P[p, p] = 0
+                P[Pr[p], p] = 1
+        return L, U, P
+
+    def det(self, n: int = None):
+        if isinstance(n, int) and n < 1:
+            return ValueError('n has to be int >=1 or None')
         L, U = self.lu()
         acc = None
         for k in range(self.height):
-            acc = U[k, k] if acc is None else acc * U[k, k]
+            if n is None:
+                new_n = None
+            else:
+            if isinstance(U[k, k], Matrix) and new_n != 0:
+                acc = U[k, k].det(new_n) if acc is None else acc * U[k, k].det(new_n)
+            else:
+                acc = U[k, k] if acc is None else acc * U[k, k]
         return acc
 
-        def _LY_E_sol(self, L):
-            ''' Solves LY=E'''
-
-        Y = L.empty_like()
-        for i in range(L.height):
-            for j in range(L.width):
-                Y[j, i] = 0 if i != j else 1
+    @classmethod
+    def _LY_B_sol(cls, l: 'Matrix', b: 'Matrix') -> 'Matrix':
+        """ Solves LY=B"""
+        if (l.width != b.height) or (l.height != l.width):
+            raise ValueError
+        Y = b.empty_like()
+        for i in range(b.width):
+            for j in range(l.width):
+                Y[j, i] = b[j, i]
                 for k in range(j):
-                    Y[j, i] = Y[j, i] - L[j, k] * Y[k, i]
+                    Y[j, i] = Y[j, i] - l[j, k] * Y[k, i]
+        # print((l * Y - b).norm())
         return Y
 
-    def _Ly_b_sol(self, L, b):
-        ''' Solves Ly=b'''
-        y = np.empty(L.height, dtype=self.dtype)
-        for i in range(L.height):
-            y[i] = b[i]
-            for k in range(i):
-                y[i] = y[i] - L[i, k] * y[k]
-        return y
-
-    def _Ux_y_sol(self, U, y):
-        x = np.empty(U.height, dtype=self.dtype)
-        for j in range(U.width - 1, -1, -1):
-            x[j] = y[j]
-            for k in range(j + 1, U.width):
-                x[j] = x[j] - U[j, k] * x[k]
-            x[j] = x[j] * self.invert_element(U[j, j])
-        return x
-
-    def _UX_Y_sol(self, U, Y):
-        ''' Solves UX=Y'''
-        X = Y.empty_like()
-        for i in range(U.height):
-            X[:, i] = self._Ux_y_sol(U, Y[:, i])
+    @classmethod
+    def _UX_Y_sol(cls, u: 'Matrix', y: 'Matrix') -> 'Matrix':
+        """ Solves UX=Y """
+        if (u.height != y.height) or (u.height != u.width):
+            raise ValueError
+        X = y.empty_like()
+        for i in range(X.width):
+            for j in range(u.width - 1, -1, -1):
+                X[j, i] = y[j, i]
+                for k in range(j + 1, u.width):
+                    X[j, i] = X[j, i] - u[j, k] * X[k, i]
+                X[j, i] = invert_element(u[j, j]) * X[j, i]
         return X
 
-    def solve(self):
-        pass
+    def solve(self, b: 'Matrix'):
+        return self.inverse() * b
+
+    @property
+    def T(self):
+        matrix = self.empty_like(self.height, self.width)
+        for i in range(matrix.width):
+            for j in range(matrix.height):
+                matrix[j, i] = transpose_element(self[i, j])
+        return matrix
 
 
 class FullMatrix(Matrix, ABC):
@@ -247,30 +349,47 @@ class FullMatrix(Matrix, ABC):
     Заполненная матрица с элементами произвольного типа.
     """
 
-    def __init__(self, data):
-        """
-        Создает объект, хранящий матрицу в виде np.ndarray `data`.
-        """
+    def __init__(self, data: Union[np.ndarray, list]):
+        if isinstance(data, list):
+            data = np.array(data)
         assert isinstance(data, np.ndarray)
         self.data = data
 
     def empty_like(self, width=None, height=None):
         dtype = self.data.dtype
+        dtype = object
         if width is None:
-            width = self.data.shape[1]
+            width = self.width
         if height is None:
-            height = self.data.shape[0]
+            height = self.height
         data = np.empty((height, width), dtype=dtype)
         return FullMatrix(data)
 
     @classmethod
-    def zero(_cls, height, width, default=0):
+    def zero(cls, height, width, default=0):
         """
         Создает матрицу размера `width` x `height` со значениями по умолчанию `default`.
         """
         data = np.empty((height, width), dtype=type(default))
         data[:] = default
-        return FullMatrix(data)
+        return cls(data)
+
+    def zero_like(self):
+        matix = self.empty_like()
+        for i in range(self.width):
+            for j in range(self.height):
+                matix[i, j] = zero_element(self[i, j])
+        return matix
+
+    def eye_like(self) -> 'FullMatrix':
+        matix = self.empty_like()
+        for i in range(self.height):
+            for j in range(self.width):
+                if i != j:
+                    matix[i, j] = zero_element(self[i, j])
+                else:
+                    matix[i, i] = eye_element(self[i, i])
+        return matix
 
     @property
     def shape(self):
@@ -290,12 +409,97 @@ class FullMatrix(Matrix, ABC):
 
     def lu(self):
         L, U = super().lu()
-        return FullMatrix(L), FullMatrix(U)
+        return L, U
+
+    def plu(self):
+        L, U, P = super().lup()
+        return L, U, P
 
     def inverse(self):
-        '''LUX=E'''
-        L, U = self.lu()
-        Y = self._LY_E_sol(L)
+        """ PLUX=E """
+        L, U, P = self.lup()
+        Y = self._LY_B_sol(L, P)
         X = self._UX_Y_sol(U, Y)
-        return (X)
+        # L, U = self.lu()
+        # Y = self._LY_B_sol(L, L.eye_like())
+        # X = self._UX_Y_sol(U, Y)
+        return X
 
+
+class SymmetricMatrix(FullMatrix):
+    def __init__(self, data: Union[np.ndarray, Iterable], side='u'):
+        if isinstance(data, Iterable):
+            data = np.array(data)
+        if side not in ['u', 'd']:
+            raise ValueError
+        assert data.shape[0] == data.shape[1], f"Shapes does not match: {self.shape}"
+        for i in range(data.shape[0]):
+            for j in range(i+1, data.shape[1]):
+                if side == 'u':
+                    data[j, i] = transpose_element(data[i, j])
+                elif side == 'd':
+                    data[i, j] = transpose_element(data[j, i])
+                else:
+                    raise ValueError
+            if isinstance(data[i, i], FullMatrix):
+                data[i, i] = SymmetricMatrix(data[i, i].data, side=side)
+            elif isinstance(data[i, i], BandMatrix):
+                # data[i, i] = BandMatrix(data[i, i].data, side=side)
+                raise NotImplementedError
+        super().__init__(data)
+
+    def ldl(self) -> Tuple['Matrix', 'Matrix']:
+        L = self.eye_like()
+        D = self.eye_like()
+        for c in range(self.height):
+            for r in range(c, self.width):
+                if r == c:
+                    acc = None
+                    for k in range(r):
+                        add = L[r, k] * D[k, k] * transpose_element(L[r, k])
+                        acc = add if acc is None else (acc + add)
+                    D[r, r] = self[r, r] if acc is None else (self[r, r] - acc)
+                else:
+                    acc = None
+                    for k in range(c):
+                        add = L[r, k] * D[k, k] * transpose_element(L[c, k])
+                        acc = add if acc is None else (acc + add)
+                    L[r, c] = self[r, c] if acc is None else (self[r, c] - acc)
+                    L[r, c] = L[r, c] * invert_element(D[c, c])
+        return L, D
+
+
+class BandMatrix(FullMatrix):
+    def __init__(self, data: Dict[int, Union[np.ndarray, Iterable]]):
+        self.ds = list(sorted(data.keys(), reverse=True))
+        new_data = []
+        min_d = self.ds[np.argmin(abs(np.array(self.ds)))]
+        N = abs(min_d) + len(data[min_d])
+        self.N = N
+        for d in self.ds:
+            if len(data[d]) != N - abs(d):
+                raise ValueError(f'{d} must contain {N - abs(d)} items')
+            if -d in self.ds and (len(data[d]) != len(data[-d])):
+                raise ValueError(f'{d} and {-d} must have the same length')
+            new_data.append(np.concatenate([data[d], np.zeros(abs(d))]))
+        super(BandMatrix, self).__init__(np.array(new_data))
+
+    def __getitem__(self, key):
+        row, column = key
+        if column-row not in self.ds:
+            return 0
+        return self.data[self.ds.index(column-row), min(row, column)]
+
+    def __setitem__(self, key, value):
+        row, column = key
+        if column - row not in self.ds:
+            raise IndexError('You will break the band matrix')
+        self.data[self.ds.index(column-row), min(row, column)] = value
+
+    @property
+    def shape(self):
+        return self.N, self.N
+
+    @property
+    def T(self):
+        raise NotImplementedError

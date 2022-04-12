@@ -1,1 +1,1 @@
-from .Matrixs import Matrix, FullMatrix
+from .Matrixs import Matrix, FullMatrix, SymmetricMatrix, BandMatrix
