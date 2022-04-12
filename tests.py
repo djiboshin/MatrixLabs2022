@@ -187,30 +187,29 @@ for d_m in range(1, 3):
 
 
 ''' BandMatrix '''
-p = {
-    0: [Fraction(1), Fraction(6), Fraction(1), Fraction(1)],
-    1: [1, Fraction(1), 3],
-    -1: [Fraction(6), 2, 2],
-}
-
-# print(BandMatrix(p))
-print(BandMatrix(p))
-
-print((BandMatrix(p) * BandMatrix(p).inverse()))
-# print(FullMatrix([[1],[0],[0]]))
-# print(BandMatrix(p).solve(FullMatrix([[1],[0],[0]])))
-
 
 p = {
-    0: [block_FullMatrix(2,2,4*i) for i in range(3)],
-    # 1: [block_FullMatrix(2,2,12*i) for i in range(2)],
-    -1: [block_FullMatrix(2,2,4*i +21) for i in range(2)]
+    -1: [Fraction(-91), Fraction(17), 0],
+    0: [Fraction(-93), Fraction(45), Fraction(88), Fraction(33)],
+    1: [Fraction(91), Fraction(17), 0],
 }
-print(BandMatrix(p))
-print()
+m = BandMatrix(p)
+assert m.inverse() * m == m.eye_like()
+assert m.inverse().inverse() == m
 
-print(BandMatrix(p).lu()[1])
 
-print(FullMatrix([[min(i, j) for i in range(3)] for j in range(3)]))
-print(FullMatrix([[i-j for i in range(3)] for j in range(3)]))
-''' '''
+def FullFrac(data):
+    new_data = [[Fraction(j) for j in i] for i in data]
+    return FullMatrix(new_data)
+
+
+p = {
+    0: [FullFrac([[1, 2], [3, 4]]), FullFrac([[1, 2], [3, 4]]), FullFrac([[1, 2], [3, 4]])],
+    # -1: [FullFrac([[5, 5], [3, 7]]), FullFrac([[1, 4], [3, 4]]),],
+}
+
+m = BandMatrix(p)
+
+L, U, P = m.lup()
+assert P * L * U == m
+assert m.inverse() * m == m.eye_like()

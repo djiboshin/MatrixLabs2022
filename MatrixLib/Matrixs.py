@@ -113,7 +113,10 @@ class Matrix(ABC):
 
     def __eq__(self, other):
         if type(self) != type(other) and not isinstance(other, Matrix):
-            return False
+            if not (isinstance(other, np.number) or isinstance(other, numbers.Number) or isinstance(other, int)):
+                return False
+            else:
+                return self == self.eye_like() * other
         for i in range(self.height):
             for k in range(self.width):
                 if self[i, k] != other[i, k]:
@@ -136,6 +139,9 @@ class Matrix(ABC):
             # return matrix
             return self + self.eye_like() * other
         return NotImplemented
+
+    def __radd__(self, other):
+        return self + other
 
     def __sub__(self, other):
         if isinstance(other, Matrix):
@@ -358,7 +364,7 @@ class FullMatrix(Matrix, ABC):
 
     def empty_like(self, width=None, height=None):
         dtype = self.data.dtype
-        dtype = object
+        dtype = object  
         if width is None:
             width = self.width
         if height is None:
@@ -412,15 +418,13 @@ class FullMatrix(Matrix, ABC):
         L, U = super().lu()
         return L, U
 
-    def plu(self):
-        L, U, P = super().lup()
-        return L, U, P
-
     def inverse(self):
         """ PLUX=E """
         L, U, P = self.lup()
+        # assert (P * L * U - self).norm() < 1e-10
         Y = self._LY_B_sol(L, P)
         X = self._UX_Y_sol(U, Y)
+        # assert (L * U * X - P).norm() < 1e-10
         # L, U = self.lu()
         # Y = self._LY_B_sol(L, L.eye_like())
         # X = self._UX_Y_sol(U, Y)
